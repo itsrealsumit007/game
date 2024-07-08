@@ -6,6 +6,8 @@ const int SCREEN_HEIGHT = 600;
 const int PADDLE_WIDTH = 20;
 const int PADDLE_HEIGHT = 100;
 const int PADDLE_SPEED = 10;
+const int BALL_SIZE = 20;
+const int BALL_SPEED = 5;
 
 typedef struct {
     int x, y;
@@ -13,8 +15,20 @@ typedef struct {
     int dy;
 } Paddle;
 
+typedef struct {
+    int x, y;
+    int w, h;
+    int dx, dy;
+} Ball;
+
 void drawPaddle(SDL_Renderer* renderer, Paddle* paddle) {
     SDL_Rect rect = { paddle->x, paddle->y, paddle->w, paddle->h };
+    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+    SDL_RenderFillRect(renderer, &rect);
+}
+
+void drawBall(SDL_Renderer* renderer, Ball* ball) {
+    SDL_Rect rect = { ball->x, ball->y, ball->w, ball->h };
     SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
     SDL_RenderFillRect(renderer, &rect);
 }
@@ -26,6 +40,27 @@ void movePaddle(Paddle* paddle) {
     }
     if (paddle->y > SCREEN_HEIGHT - paddle->h) {
         paddle->y = SCREEN_HEIGHT - paddle->h;
+    }
+}
+
+void moveBall(Ball* ball, Paddle* leftPaddle, Paddle* rightPaddle) {
+    ball->x += ball->dx;
+    ball->y += ball->dy;
+
+    // Collision with paddles
+    if (ball->x <= leftPaddle->x + leftPaddle->w &&
+        ball->y + ball->h >= leftPaddle->y && ball->y <= leftPaddle->y + leftPaddle->h) {
+        ball->dx = -ball->dx;
+    }
+
+    if (ball->x + ball->w >= rightPaddle->x &&
+        ball->y + ball->h >= rightPaddle->y && ball->y <= rightPaddle->y + rightPaddle->h) {
+        ball->dx = -ball->dx;
+    }
+
+    // Collision with screen edges
+    if (ball->y <= 0 || ball->y >= SCREEN_HEIGHT - ball->h) {
+        ball->dy = -ball->dy;
     }
 }
 
@@ -52,6 +87,7 @@ int main(int argc, char* args[]) {
 
     Paddle leftPaddle = { 50, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0 };
     Paddle rightPaddle = { SCREEN_WIDTH - 50 - PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0 };
+    Ball ball = { SCREEN_WIDTH / 2 - BALL_SIZE / 2, SCREEN_HEIGHT / 2 - BALL_SIZE / 2, BALL_SIZE, BALL_SIZE, BALL_SPEED, BALL_SPEED };
 
     int quit = 0;
     SDL_Event e;
@@ -91,12 +127,14 @@ int main(int argc, char* args[]) {
 
         movePaddle(&leftPaddle);
         movePaddle(&rightPaddle);
+        moveBall(&ball, &leftPaddle, &rightPaddle);
 
         SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF);
         SDL_RenderClear(renderer);
 
         drawPaddle(renderer, &leftPaddle);
         drawPaddle(renderer, &rightPaddle);
+        drawBall(renderer, &ball);
 
         SDL_RenderPresent(renderer);
     }
