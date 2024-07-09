@@ -1,5 +1,6 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
+#include <SDL2/SDL_mixer.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -13,7 +14,6 @@ const int BALL_SIZE = 20;
 const int BALL_SPEED = 5;
 const int WINNING_SCORE = 5;
 
-// Difficulty levels for AI
 typedef enum {
     EASY,
     MEDIUM,
@@ -31,6 +31,50 @@ typedef struct {
     int w, h;
     int dx, dy;
 } Ball;
+
+
+Mix_Chunk* paddleSound = NULL;
+Mix_Chunk* scoreSound = NULL;
+
+void initializeSound() {
+    // Initialize SDL Mixer
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        printf("SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError());
+        exit(1);
+    }
+
+
+    paddleSound = Mix_LoadWAV("paddle_hit.wav");
+    if (paddleSound == NULL) {
+        printf("Failed to load paddle hit sound effect! SDL_mixer Error: %s\n", Mix_GetError());
+        exit(1);
+    }
+
+    scoreSound = Mix_LoadWAV("score_update.wav");
+    if (scoreSound == NULL) {
+        printf("Failed to load score update sound effect! SDL_mixer Error: %s\n", Mix_GetError());
+        exit(1);
+    }
+}
+
+void closeSound() {
+
+    Mix_FreeChunk(paddleSound);
+    Mix_FreeChunk(scoreSound);
+    paddleSound = NULL;
+    scoreSound = NULL;
+
+
+    Mix_Quit();
+}
+
+void playPaddleSound() {
+    Mix_PlayChannel(-1, paddleSound, 0);
+}
+
+void playScoreSound() {
+    Mix_PlayChannel(-1, scoreSound, 0);
+}
 
 void drawPaddle(SDL_Renderer* renderer, Paddle* paddle) {
     SDL_Rect rect = { paddle->x, paddle->y, paddle->w, paddle->h };
@@ -83,11 +127,13 @@ void moveBall(Ball* ball, Paddle* leftPaddle, Paddle* rightPaddle, int* leftScor
     if (ball->x <= leftPaddle->x + leftPaddle->w &&
         ball->y + ball->h >= leftPaddle->y && ball->y <= leftPaddle->y + leftPaddle->h) {
         ball->dx = -ball->dx;
+        playPaddleSound();
     }
 
     if (ball->x + ball->w >= rightPaddle->x &&
         ball->y + ball->h >= rightPaddle->y && ball->y <= rightPaddle->y + rightPaddle->h) {
         ball->dx = -ball->dx;
+        playPaddleSound();
     }
 
     if (ball->y <= 0 || ball->y >= SCREEN_HEIGHT - ball->h) {
@@ -100,6 +146,7 @@ void moveBall(Ball* ball, Paddle* leftPaddle, Paddle* rightPaddle, int* leftScor
         ball->y = SCREEN_HEIGHT / 2 - BALL_SIZE / 2;
         ball->dx = BALL_SPEED;
         ball->dy = BALL_SPEED;
+        playScoreSound();
     }
 
     if (ball->x > SCREEN_WIDTH) {
@@ -108,6 +155,7 @@ void moveBall(Ball* ball, Paddle* leftPaddle, Paddle* rightPaddle, int* leftScor
         ball->y = SCREEN_HEIGHT / 2 - BALL_SIZE / 2;
         ball->dx = -BALL_SPEED;
         ball->dy = BALL_SPEED;
+        playScoreSound();
     }
 }
 
@@ -138,7 +186,7 @@ void moveAIPaddle(Paddle* paddle, Ball* ball, Difficulty difficulty) {
 }
 
 int main(int argc, char* args[]) {
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
         return 1;
     }
@@ -163,6 +211,14 @@ int main(int argc, char* args[]) {
         return 1;
     }
 
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        printf("SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError());
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
     TTF_Font* font = TTF_OpenFont("path_to_font.ttf", 28);
     if (font == NULL) {
         printf("Failed to load font! TTF_Error: %s\n", TTF_GetError());
@@ -171,6 +227,8 @@ int main(int argc, char* args[]) {
         SDL_Quit();
         return 1;
     }
+
+    initializeSound();
 
     Paddle leftPaddle = { 50, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0 };
     Paddle rightPaddle = { SCREEN_WIDTH - 50 - PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0 };
@@ -181,9 +239,9 @@ int main(int argc, char* args[]) {
     int quit = 0;
     int gameOver = 0;
     SDL_Event e;
-    srand(time(NULL)); // Initialize random seed
+    srand(time(NULL)); 
 
-    Difficulty aiDifficulty = MEDIUM; // Default difficulty
+    Difficulty aiDifficulty = MEDIUM; 
 
     while (!quit) {
         while (SDL_PollEvent(&e) != 0) {
@@ -266,6 +324,8 @@ int main(int argc, char* args[]) {
             SDL_RenderPresent(renderer);
         }
     }
+
+    closeSound();
 
     TTF_CloseFont(font);
     SDL_DestroyRenderer(renderer);
