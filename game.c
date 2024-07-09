@@ -1,6 +1,8 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 
 const int SCREEN_WIDTH = 800;
 const int SCREEN_HEIGHT = 600;
@@ -10,6 +12,13 @@ const int PADDLE_SPEED = 10;
 const int BALL_SIZE = 20;
 const int BALL_SPEED = 5;
 const int WINNING_SCORE = 5;
+
+// Difficulty levels for AI
+typedef enum {
+    EASY,
+    MEDIUM,
+    HARD
+} Difficulty;
 
 typedef struct {
     int x, y;
@@ -102,6 +111,32 @@ void moveBall(Ball* ball, Paddle* leftPaddle, Paddle* rightPaddle, int* leftScor
     }
 }
 
+void moveAIPaddle(Paddle* paddle, Ball* ball, Difficulty difficulty) {
+    int aiSpeed = PADDLE_SPEED;
+    switch (difficulty) {
+        case EASY:
+            aiSpeed = PADDLE_SPEED / 2;
+            break;
+        case MEDIUM:
+            aiSpeed = PADDLE_SPEED;
+            break;
+        case HARD:
+            aiSpeed = PADDLE_SPEED * 2;
+            break;
+    }
+
+    if (ball->dy > 0) {
+        if (paddle->y + paddle->h / 2 < ball->y + ball->h / 2) {
+            paddle->dy = aiSpeed;
+        } else if (paddle->y + paddle->h / 2 > ball->y + ball->h / 2) {
+            paddle->dy = -aiSpeed;
+        } else {
+            paddle->dy = 0;
+        }
+    }
+    movePaddle(paddle);
+}
+
 int main(int argc, char* args[]) {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
@@ -144,7 +179,11 @@ int main(int argc, char* args[]) {
     int leftScore = 0;
     int rightScore = 0;
     int quit = 0;
+    int gameOver = 0;
     SDL_Event e;
+    srand(time(NULL)); // Initialize random seed
+
+    Difficulty aiDifficulty = MEDIUM; // Default difficulty
 
     while (!quit) {
         while (SDL_PollEvent(&e) != 0) {
@@ -164,6 +203,28 @@ int main(int argc, char* args[]) {
                     case SDLK_DOWN:
                         rightPaddle.dy = PADDLE_SPEED;
                         break;
+                    case SDLK_r:
+                        if (gameOver) {
+                            leftScore = 0;
+                            rightScore = 0;
+                            leftPaddle.y = SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2;
+                            rightPaddle.y = SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2;
+                            ball.x = SCREEN_WIDTH / 2 - BALL_SIZE / 2;
+                            ball.y = SCREEN_HEIGHT / 2 - BALL_SIZE / 2;
+                            ball.dx = BALL_SPEED;
+                            ball.dy = BALL_SPEED;
+                            gameOver = 0;
+                        }
+                        break;
+                    case SDLK_1:
+                        aiDifficulty = EASY;
+                        break;
+                    case SDLK_2:
+                        aiDifficulty = MEDIUM;
+                        break;
+                    case SDLK_3:
+                        aiDifficulty = HARD;
+                        break;
                 }
             } else if (e.type == SDL_KEYUP) {
                 switch (e.key.keysym.sym) {
@@ -179,9 +240,11 @@ int main(int argc, char* args[]) {
             }
         }
 
-        movePaddle(&leftPaddle);
-        movePaddle(&rightPaddle);
-        moveBall(&ball, &leftPaddle, &rightPaddle, &leftScore, &rightScore);
+        if (!gameOver) {
+            movePaddle(&leftPaddle);
+            moveAIPaddle(&rightPaddle, &ball, aiDifficulty);
+            moveBall(&ball, &leftPaddle, &rightPaddle, &leftScore, &rightScore);
+        }
 
         SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF);
         SDL_RenderClear(renderer);
@@ -192,15 +255,13 @@ int main(int argc, char* args[]) {
         drawScore(renderer, font, leftScore, rightScore);
 
         if (leftScore >= WINNING_SCORE) {
-            drawGameOver(renderer, font, "Left Player Wins!");
+            drawGameOver(renderer, font, "Left Player Wins! Press 'R' to Restart");
             SDL_RenderPresent(renderer);
-            SDL_Delay(3000);
-            quit = 1;
+            gameOver = 1;
         } else if (rightScore >= WINNING_SCORE) {
-            drawGameOver(renderer, font, "Right Player Wins!");
+            drawGameOver(renderer, font, "Right Player Wins! Press 'R' to Restart");
             SDL_RenderPresent(renderer);
-            SDL_Delay(3000);
-            quit = 1;
+            gameOver = 1;
         } else {
             SDL_RenderPresent(renderer);
         }
