@@ -1,4 +1,5 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 
 const int SCREEN_WIDTH = 800;
@@ -8,6 +9,7 @@ const int PADDLE_HEIGHT = 100;
 const int PADDLE_SPEED = 10;
 const int BALL_SIZE = 20;
 const int BALL_SPEED = 5;
+const int WINNING_SCORE = 5;
 
 typedef struct {
     int x, y;
@@ -33,14 +35,23 @@ void drawBall(SDL_Renderer* renderer, Ball* ball) {
     SDL_RenderFillRect(renderer, &rect);
 }
 
-void drawScore(SDL_Renderer* renderer, int leftScore, int rightScore) {
+void drawScore(SDL_Renderer* renderer, TTF_Font* font, int leftScore, int rightScore) {
     char scoreText[12];
     sprintf(scoreText, "%d - %d", leftScore, rightScore);
-    SDL_Surface* surface = SDL_CreateRGBSurface(0, SCREEN_WIDTH, SCREEN_HEIGHT, 32, 0, 0, 0, 0);
     SDL_Color textColor = { 255, 255, 255, 255 };
     SDL_Surface* textSurface = TTF_RenderText_Solid(font, scoreText, textColor);
     SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, textSurface);
     SDL_Rect textRect = { SCREEN_WIDTH / 2 - 50, 50, 100, 50 };
+    SDL_RenderCopy(renderer, texture, NULL, &textRect);
+    SDL_FreeSurface(textSurface);
+    SDL_DestroyTexture(texture);
+}
+
+void drawGameOver(SDL_Renderer* renderer, TTF_Font* font, const char* winnerText) {
+    SDL_Color textColor = { 255, 0, 0, 255 };
+    SDL_Surface* textSurface = TTF_RenderText_Solid(font, winnerText, textColor);
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    SDL_Rect textRect = { SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT / 2 - 25, 300, 50 };
     SDL_RenderCopy(renderer, texture, NULL, &textRect);
     SDL_FreeSurface(textSurface);
     SDL_DestroyTexture(texture);
@@ -178,9 +189,21 @@ int main(int argc, char* args[]) {
         drawPaddle(renderer, &leftPaddle);
         drawPaddle(renderer, &rightPaddle);
         drawBall(renderer, &ball);
-        drawScore(renderer, leftScore, rightScore);
+        drawScore(renderer, font, leftScore, rightScore);
 
-        SDL_RenderPresent(renderer);
+        if (leftScore >= WINNING_SCORE) {
+            drawGameOver(renderer, font, "Left Player Wins!");
+            SDL_RenderPresent(renderer);
+            SDL_Delay(3000);
+            quit = 1;
+        } else if (rightScore >= WINNING_SCORE) {
+            drawGameOver(renderer, font, "Right Player Wins!");
+            SDL_RenderPresent(renderer);
+            SDL_Delay(3000);
+            quit = 1;
+        } else {
+            SDL_RenderPresent(renderer);
+        }
     }
 
     TTF_CloseFont(font);
