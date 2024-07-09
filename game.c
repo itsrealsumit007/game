@@ -24,25 +24,25 @@ typedef struct {
     int x, y;
     int w, h;
     int dy;
+    SDL_Texture* texture;
 } Paddle;
 
 typedef struct {
     int x, y;
     int w, h;
     int dx, dy;
+    SDL_Texture* texture;
 } Ball;
-
 
 Mix_Chunk* paddleSound = NULL;
 Mix_Chunk* scoreSound = NULL;
+SDL_Texture* pauseTexture = NULL;
 
 void initializeSound() {
-    // Initialize SDL Mixer
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
         printf("SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError());
         exit(1);
     }
-
 
     paddleSound = Mix_LoadWAV("paddle_hit.wav");
     if (paddleSound == NULL) {
@@ -58,13 +58,10 @@ void initializeSound() {
 }
 
 void closeSound() {
-
     Mix_FreeChunk(paddleSound);
     Mix_FreeChunk(scoreSound);
     paddleSound = NULL;
     scoreSound = NULL;
-
-
     Mix_Quit();
 }
 
@@ -76,38 +73,51 @@ void playScoreSound() {
     Mix_PlayChannel(-1, scoreSound, 0);
 }
 
+SDL_Texture* loadTexture(SDL_Renderer* renderer, const char* path) {
+    SDL_Surface* surface = SDL_LoadBMP(path);
+    if (surface == NULL) {
+        printf("Unable to load image %s! SDL_Error: %s\n", path, SDL_GetError());
+        return NULL;
+    }
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_FreeSurface(surface);
+    return texture;
+}
+
 void drawPaddle(SDL_Renderer* renderer, Paddle* paddle) {
     SDL_Rect rect = { paddle->x, paddle->y, paddle->w, paddle->h };
-    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-    SDL_RenderFillRect(renderer, &rect);
+    SDL_RenderCopy(renderer, paddle->texture, NULL, &rect);
 }
 
 void drawBall(SDL_Renderer* renderer, Ball* ball) {
     SDL_Rect rect = { ball->x, ball->y, ball->w, ball->h };
-    SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
-    SDL_RenderFillRect(renderer, &rect);
+    SDL_RenderCopy(renderer, ball->texture, NULL, &rect);
+}
+
+void drawText(SDL_Renderer* renderer, TTF_Font* font, const char* text, SDL_Color color, int x, int y, int w, int h) {
+    SDL_Surface* textSurface = TTF_RenderText_Solid(font, text, color);
+    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, textSurface);
+    SDL_Rect textRect = { x, y, w, h };
+    SDL_RenderCopy(renderer, texture, NULL, &textRect);
+    SDL_FreeSurface(textSurface);
+    SDL_DestroyTexture(texture);
 }
 
 void drawScore(SDL_Renderer* renderer, TTF_Font* font, int leftScore, int rightScore) {
     char scoreText[12];
     sprintf(scoreText, "%d - %d", leftScore, rightScore);
     SDL_Color textColor = { 255, 255, 255, 255 };
-    SDL_Surface* textSurface = TTF_RenderText_Solid(font, scoreText, textColor);
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, textSurface);
-    SDL_Rect textRect = { SCREEN_WIDTH / 2 - 50, 50, 100, 50 };
-    SDL_RenderCopy(renderer, texture, NULL, &textRect);
-    SDL_FreeSurface(textSurface);
-    SDL_DestroyTexture(texture);
+    drawText(renderer, font, scoreText, textColor, SCREEN_WIDTH / 2 - 50, 50, 100, 50);
 }
 
 void drawGameOver(SDL_Renderer* renderer, TTF_Font* font, const char* winnerText) {
     SDL_Color textColor = { 255, 0, 0, 255 };
-    SDL_Surface* textSurface = TTF_RenderText_Solid(font, winnerText, textColor);
-    SDL_Texture* texture = SDL_CreateTextureFromSurface(renderer, textSurface);
-    SDL_Rect textRect = { SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT / 2 - 25, 300, 50 };
-    SDL_RenderCopy(renderer, texture, NULL, &textRect);
-    SDL_FreeSurface(textSurface);
-    SDL_DestroyTexture(texture);
+    drawText(renderer, font, winnerText, textColor, SCREEN_WIDTH / 2 - 150, SCREEN_HEIGHT / 2 - 25, 300, 50);
+}
+
+void drawPause(SDL_Renderer* renderer, TTF_Font* font) {
+    SDL_Color textColor = { 255, 255, 255, 255 };
+    drawText(renderer, font, "Game Paused", textColor, SCREEN_WIDTH / 2 - 100, SCREEN_HEIGHT / 2 - 25, 200, 50);
 }
 
 void movePaddle(Paddle* paddle) {
@@ -230,14 +240,19 @@ int main(int argc, char* args[]) {
 
     initializeSound();
 
-    Paddle leftPaddle = { 50, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0 };
-    Paddle rightPaddle = { SCREEN_WIDTH - 50 - PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0 };
-    Ball ball = { SCREEN_WIDTH / 2 - BALL_SIZE / 2, SCREEN_HEIGHT / 2 - BALL_SIZE / 2, BALL_SIZE, BALL_SIZE, BALL_SPEED, BALL_SPEED };
+    SDL_Texture* paddleTexture = loadTexture(renderer, "paddle.bmp");
+    SDL_Texture* ballTexture = loadTexture(renderer, "ball.bmp");
+    pauseTexture = loadTexture(renderer, "pause.bmp");
+
+    Paddle leftPaddle = { 50, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0, paddleTexture };
+    Paddle rightPaddle = { SCREEN_WIDTH - 50 - PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0, paddleTexture };
+    Ball ball = { SCREEN_WIDTH / 2 - BALL_SIZE / 2, SCREEN_HEIGHT / 2 - BALL_SIZE / 2, BALL_SIZE, BALL_SIZE, BALL_SPEED, BALL_SPEED, ballTexture };
 
     int leftScore = 0;
     int rightScore = 0;
     int quit = 0;
     int gameOver = 0;
+    int paused = 0;
     SDL_Event e;
     srand(time(NULL)); 
 
@@ -283,6 +298,9 @@ int main(int argc, char* args[]) {
                     case SDLK_3:
                         aiDifficulty = HARD;
                         break;
+                    case SDLK_p:
+                        paused = !paused;
+                        break;
                 }
             } else if (e.type == SDL_KEYUP) {
                 switch (e.key.keysym.sym) {
@@ -298,7 +316,7 @@ int main(int argc, char* args[]) {
             }
         }
 
-        if (!gameOver) {
+        if (!gameOver && !paused) {
             movePaddle(&leftPaddle);
             moveAIPaddle(&rightPaddle, &ball, aiDifficulty);
             moveBall(&ball, &leftPaddle, &rightPaddle, &leftScore, &rightScore);
@@ -312,22 +330,27 @@ int main(int argc, char* args[]) {
         drawBall(renderer, &ball);
         drawScore(renderer, font, leftScore, rightScore);
 
-        if (leftScore >= WINNING_SCORE) {
-            drawGameOver(renderer, font, "Left Player Wins! Press 'R' to Restart");
-            SDL_RenderPresent(renderer);
-            gameOver = 1;
-        } else if (rightScore >= WINNING_SCORE) {
-            drawGameOver(renderer, font, "Right Player Wins! Press 'R' to Restart");
-            SDL_RenderPresent(renderer);
-            gameOver = 1;
-        } else {
-            SDL_RenderPresent(renderer);
+        if (gameOver) {
+            if (leftScore >= WINNING_SCORE) {
+                drawGameOver(renderer, font, "Left Player Wins! Press 'R' to Restart");
+            } else if (rightScore >= WINNING_SCORE) {
+                drawGameOver(renderer, font, "Right Player Wins! Press 'R' to Restart");
+            }
         }
+
+        if (paused && !gameOver) {
+            drawPause(renderer, font);
+        }
+
+        SDL_RenderPresent(renderer);
     }
 
     closeSound();
 
     TTF_CloseFont(font);
+    SDL_DestroyTexture(paddleTexture);
+    SDL_DestroyTexture(ballTexture);
+    SDL_DestroyTexture(pauseTexture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     TTF_Quit();
