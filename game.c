@@ -13,12 +13,23 @@ const int PADDLE_SPEED = 10;
 const int BALL_SIZE = 20;
 const int BALL_SPEED = 5;
 const int WINNING_SCORE = 5;
+const int POWERUP_SIZE = 20;
+const int POWERUP_SPEED = 3;
 
 typedef enum {
     EASY,
     MEDIUM,
     HARD
 } Difficulty;
+
+typedef enum {
+    NONE,
+    INCREASE_PADDLE_SIZE,
+    DECREASE_PADDLE_SIZE,
+    INCREASE_BALL_SPEED,
+    DECREASE_BALL_SPEED,
+    EXTRA_LIFE
+} PowerUpType;
 
 typedef struct {
     int x, y;
@@ -34,8 +45,16 @@ typedef struct {
     SDL_Texture* texture;
 } Ball;
 
+typedef struct {
+    int x, y;
+    int dx, dy;
+    PowerUpType type;
+    SDL_Texture* texture;
+} PowerUp;
+
 Mix_Chunk* paddleSound = NULL;
 Mix_Chunk* scoreSound = NULL;
+Mix_Chunk* powerUpSound = NULL;
 SDL_Texture* pauseTexture = NULL;
 
 void initializeSound() {
@@ -55,13 +74,21 @@ void initializeSound() {
         printf("Failed to load score update sound effect! SDL_mixer Error: %s\n", Mix_GetError());
         exit(1);
     }
+
+    powerUpSound = Mix_LoadWAV("powerup.wav");
+    if (powerUpSound == NULL) {
+        printf("Failed to load powerup sound effect! SDL_mixer Error: %s\n", Mix_GetError());
+        exit(1);
+    }
 }
 
 void closeSound() {
     Mix_FreeChunk(paddleSound);
     Mix_FreeChunk(scoreSound);
+    Mix_FreeChunk(powerUpSound);
     paddleSound = NULL;
     scoreSound = NULL;
+    powerUpSound = NULL;
     Mix_Quit();
 }
 
@@ -71,6 +98,10 @@ void playPaddleSound() {
 
 void playScoreSound() {
     Mix_PlayChannel(-1, scoreSound, 0);
+}
+
+void playPowerUpSound() {
+    Mix_PlayChannel(-1, powerUpSound, 0);
 }
 
 SDL_Texture* loadTexture(SDL_Renderer* renderer, const char* path) {
@@ -92,6 +123,11 @@ void drawPaddle(SDL_Renderer* renderer, Paddle* paddle) {
 void drawBall(SDL_Renderer* renderer, Ball* ball) {
     SDL_Rect rect = { ball->x, ball->y, ball->w, ball->h };
     SDL_RenderCopy(renderer, ball->texture, NULL, &rect);
+}
+
+void drawPowerUp(SDL_Renderer* renderer, PowerUp* powerUp) {
+    SDL_Rect rect = { powerUp->x, powerUp->y, POWERUP_SIZE, POWERUP_SIZE };
+    SDL_RenderCopy(renderer, powerUp->texture, NULL, &rect);
 }
 
 void drawText(SDL_Renderer* renderer, TTF_Font* font, const char* text, SDL_Color color, int x, int y, int w, int h) {
@@ -130,7 +166,7 @@ void movePaddle(Paddle* paddle) {
     }
 }
 
-void moveBall(Ball* ball, Paddle* leftPaddle, Paddle* rightPaddle, int* leftScore, int* rightScore) {
+void moveBall(Ball* ball, Paddle* leftPaddle, Paddle* rightPaddle, int* leftScore, int* rightScore, PowerUp* powerUp, int* powerUpActive, int* powerUpTimer) {
     ball->x += ball->dx;
     ball->y += ball->dy;
 
@@ -157,6 +193,11 @@ void moveBall(Ball* ball, Paddle* leftPaddle, Paddle* rightPaddle, int* leftScor
         ball->dx = BALL_SPEED;
         ball->dy = BALL_SPEED;
         playScoreSound();
+
+        *powerUpActive = 0;
+        powerUp->x = -POWERUP_SIZE;
+        powerUp->y = -POWERUP_SIZE;
+        *powerUpTimer = 0;
     }
 
     if (ball->x > SCREEN_WIDTH) {
@@ -166,6 +207,11 @@ void moveBall(Ball* ball, Paddle* leftPaddle, Paddle* rightPaddle, int* leftScor
         ball->dx = -BALL_SPEED;
         ball->dy = BALL_SPEED;
         playScoreSound();
+
+        *powerUpActive = 0;
+        powerUp->x = -POWERUP_SIZE;
+        powerUp->y = -POWERUP_SIZE;
+        *powerUpTimer = 0;
     }
 }
 
@@ -195,131 +241,115 @@ void moveAIPaddle(Paddle* paddle, Ball* ball, Difficulty difficulty) {
     movePaddle(paddle);
 }
 
-int main(int argc, char* args[]) {
+void spawnPowerUp(PowerUp* powerUp, int* powerUpActive) {
+    if (*powerUpActive == 0) {
+        powerUp->x = rand() % (SCREEN_WIDTH - POWERUP_SIZE);
+        powerUp->y = rand() % (SCREEN_HEIGHT - POWERUP_SIZE);
+        powerUp->dx = 0;
+        powerUp->dy = POWERUP_SPEED;
+        powerUp->type = (PowerUpType)(rand() % 6); // Randomly select a power-up type
+        *powerUpActive = 1;
+    }
+}
+
+void movePowerUp(PowerUp* powerUp, int* powerUpActive) {
+    if (*powerUpActive) {
+        powerUp->y += powerUp->dy;
+        if (powerUp->y > SCREEN_HEIGHT) {
+            *powerUpActive = 0;
+            powerUp->x = -POWERUP_SIZE;
+            powerUp->y = -POWERUP_SIZE;
+        }
+    }
+}
+
+void applyPowerUp(Paddle* leftPaddle, Paddle* rightPaddle, Ball* ball, int* leftScore, int* rightScore, PowerUp* powerUp, int* powerUpActive, int* powerUpTimer) {
+    if (*powerUpActive && ball->x + ball->w >= powerUp->x && ball->x <= powerUp->x + POWERUP_SIZE &&
+        ball->y + ball->h >= powerUp->y && ball->y <= powerUp->y + POWERUP_SIZE) {
+        switch (powerUp->type) {
+            case INCREASE_PADDLE_SIZE:
+                leftPaddle->h += 20;
+                rightPaddle->h += 20;
+                break;
+            case DECREASE_PADDLE_SIZE:
+                leftPaddle->h -= 20;
+                rightPaddle->h -= 20;
+                break;
+            case INCREASE_BALL_SPEED:
+                ball->dx *= 2;
+                ball->dy *= 2;
+                break;
+            case DECREASE_BALL_SPEED:
+                ball->dx /= 2;
+                ball->dy /= 2;
+                break;
+            case EXTRA_LIFE:
+                if (*leftScore > 0) {
+                    (*leftScore)--;
+                } else if (*rightScore > 0) {
+                    (*rightScore)--;
+                }
+                break;
+            default:
+                break;
+        }
+        playPowerUpSound();
+
+        *powerUpActive = 0;
+        powerUp->x = -POWERUP_SIZE;
+        powerUp->y = -POWERUP_SIZE;
+        *powerUpTimer = 0;
+    }
+}
+
+int main() {
+    SDL_Window* window = NULL;
+    SDL_Renderer* renderer = NULL;
+    TTF_Font* font = NULL;
+    int gameRunning = 1;
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
         return 1;
     }
 
-    if (TTF_Init() < 0) {
-        printf("TTF could not initialize! TTF_Error: %s\n", TTF_GetError());
-        return 1;
-    }
-
-    SDL_Window* window = SDL_CreateWindow("Pong Game", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
+    window = SDL_CreateWindow("Pong Game", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
     if (window == NULL) {
         printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
-        SDL_Quit();
         return 1;
     }
 
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (renderer == NULL) {
-        printf("Renderer could not be created! SDL_Error: %s\n", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_Quit();
+        printf("Renderer could not be created! SDL Error: %s\n", SDL_GetError());
         return 1;
     }
 
-    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
-        printf("SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError());
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
+    if (TTF_Init() == -1) {
+        printf("SDL_ttf could not initialize! SDL_ttf Error: %s\n", TTF_GetError());
         return 1;
     }
 
-    TTF_Font* font = TTF_OpenFont("path_to_font.ttf", 28);
+    font = TTF_OpenFont("arial.ttf", 28);
     if (font == NULL) {
-        printf("Failed to load font! TTF_Error: %s\n", TTF_GetError());
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
+        printf("Failed to load font! SDL_ttf Error: %s\n", TTF_GetError());
         return 1;
     }
 
     initializeSound();
 
-    SDL_Texture* paddleTexture = loadTexture(renderer, "paddle.bmp");
-    SDL_Texture* ballTexture = loadTexture(renderer, "ball.bmp");
-    pauseTexture = loadTexture(renderer, "pause.bmp");
 
-    Paddle leftPaddle = { 50, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0, paddleTexture };
-    Paddle rightPaddle = { SCREEN_WIDTH - 50 - PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0, paddleTexture };
-    Ball ball = { SCREEN_WIDTH / 2 - BALL_SIZE / 2, SCREEN_HEIGHT / 2 - BALL_SIZE / 2, BALL_SIZE, BALL_SIZE, BALL_SPEED, BALL_SPEED, ballTexture };
-
-    int leftScore = 0;
-    int rightScore = 0;
-    int quit = 0;
-    int gameOver = 0;
-    int paused = 0;
-    SDL_Event e;
-    srand(time(NULL)); 
-
-    Difficulty aiDifficulty = MEDIUM; 
-
-    while (!quit) {
-        while (SDL_PollEvent(&e) != 0) {
-            if (e.type == SDL_QUIT) {
-                quit = 1;
-            } else if (e.type == SDL_KEYDOWN) {
-                switch (e.key.keysym.sym) {
-                    case SDLK_w:
-                        leftPaddle.dy = -PADDLE_SPEED;
-                        break;
-                    case SDLK_s:
-                        leftPaddle.dy = PADDLE_SPEED;
-                        break;
-                    case SDLK_UP:
-                        rightPaddle.dy = -PADDLE_SPEED;
-                        break;
-                    case SDLK_DOWN:
-                        rightPaddle.dy = PADDLE_SPEED;
-                        break;
-                    case SDLK_r:
-                        if (gameOver) {
-                            leftScore = 0;
-                            rightScore = 0;
-                            leftPaddle.y = SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2;
-                            rightPaddle.y = SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2;
-                            ball.x = SCREEN_WIDTH / 2 - BALL_SIZE / 2;
-                            ball.y = SCREEN_HEIGHT / 2 - BALL_SIZE / 2;
-                            ball.dx = BALL_SPEED;
-                            ball.dy = BALL_SPEED;
-                            gameOver = 0;
-                        }
-                        break;
-                    case SDLK_1:
-                        aiDifficulty = EASY;
-                        break;
-                    case SDLK_2:
-                        aiDifficulty = MEDIUM;
-                        break;
-                    case SDLK_3:
-                        aiDifficulty = HARD;
-                        break;
-                    case SDLK_p:
-                        paused = !paused;
-                        break;
-                }
-            } else if (e.type == SDL_KEYUP) {
-                switch (e.key.keysym.sym) {
-                    case SDLK_w:
-                    case SDLK_s:
-                        leftPaddle.dy = 0;
-                        break;
-                    case SDLK_UP:
-                    case SDLK_DOWN:
-                        rightPaddle.dy = 0;
-                        break;
-                }
-            }
-        }
 
         if (!gameOver && !paused) {
             movePaddle(&leftPaddle);
             moveAIPaddle(&rightPaddle, &ball, aiDifficulty);
-            moveBall(&ball, &leftPaddle, &rightPaddle, &leftScore, &rightScore);
+            moveBall(&ball, &leftPaddle, &rightPaddle, &leftScore, &rightScore, &powerUp, &powerUpActive, &powerUpTimer);
+            if (rand() % 300 == 0) {
+                spawnPowerUp(&powerUp, &powerUpActive);
+            }
+            movePowerUp(&powerUp, &powerUpActive);
+            applyPowerUp(&leftPaddle, &rightPaddle, &ball, &leftScore, &rightScore, &powerUp, &powerUpActive, &powerUpTimer);
+            powerUpTimer++;
         }
 
         SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF);
@@ -342,6 +372,10 @@ int main(int argc, char* args[]) {
             drawPause(renderer, font);
         }
 
+        if (powerUpActive) {
+            drawPowerUp(renderer, &powerUp);
+        }
+
         SDL_RenderPresent(renderer);
     }
 
@@ -351,10 +385,14 @@ int main(int argc, char* args[]) {
     SDL_DestroyTexture(paddleTexture);
     SDL_DestroyTexture(ballTexture);
     SDL_DestroyTexture(pauseTexture);
+    for (int i = 0; i < 6; ++i) {
+        SDL_DestroyTexture(powerUpTextures[i]);
+    }
+
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+
     TTF_Quit();
     SDL_Quit();
-
     return 0;
 }
