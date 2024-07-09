@@ -338,6 +338,51 @@ int main() {
 
     initializeSound();
 
+    SDL_Texture* paddleTexture = loadTexture(renderer, "paddle.bmp");
+    SDL_Texture* ballTexture = loadTexture(renderer, "ball.bmp");
+    pauseTexture = loadTexture(renderer, "pause.bmp");
+    SDL_Texture* powerUpTextures[6];
+    powerUpTextures[INCREASE_PADDLE_SIZE] = loadTexture(renderer, "powerup_increase_paddle.bmp");
+    powerUpTextures[DECREASE_PADDLE_SIZE] = loadTexture(renderer, "powerup_decrease_paddle.bmp");
+    powerUpTextures[INCREASE_BALL_SPEED] = loadTexture(renderer, "powerup_increase_ball_speed.bmp");
+    powerUpTextures[DECREASE_BALL_SPEED] = loadTexture(renderer, "powerup_decrease_ball_speed.bmp");
+    powerUpTextures[EXTRA_LIFE] = loadTexture(renderer, "powerup_extra_life.bmp");
+
+    Paddle leftPaddle = { 50, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0, paddleTexture };
+    Paddle rightPaddle = { SCREEN_WIDTH - 50 - PADDLE_WIDTH, SCREEN_HEIGHT / 2 - PADDLE_HEIGHT / 2, PADDLE_WIDTH, PADDLE_HEIGHT, 0, paddleTexture };
+    Ball ball = { SCREEN_WIDTH / 2 - BALL_SIZE / 2, SCREEN_HEIGHT / 2 - BALL_SIZE / 2, BALL_SIZE, BALL_SIZE, BALL_SPEED, BALL_SPEED, ballTexture };
+    PowerUp powerUp = { -POWERUP_SIZE, -POWERUP_SIZE, 0, POWERUP_SPEED, NONE, NULL };
+
+    int leftScore = 0;
+    int rightScore = 0;
+    int quit = 0;
+    int gameOver = 0;
+    int paused = 0;
+    int powerUpActive = 0;
+    int powerUpTimer = 0;
+    SDL_Event e;
+    srand(time(NULL));
+
+    Difficulty aiDifficulty = MEDIUM;
+
+    while (!quit) {
+        while (SDL_PollEvent(&e) != 0) {
+            if (e.type == SDL_QUIT) {
+                quit = 1;
+            } else if (e.type == SDL_KEYDOWN) {
+                switch (e.key.keysym.sym) {
+                    case SDLK_w:
+                        leftPaddle.dy = -PADDLE_SPEED;
+                        break;
+                    case SDLK_s:
+                        leftPaddle.dy = PADDLE_SPEED;
+                        break;
+                    case SDLK_UP:
+                        rightPaddle.dy = -PADDLE_SPEED;
+                        break;
+                    case SDLK_DOWN:
+                        rightPaddle.dy = PADDLE_SPEED;
+                        break;
 
 
         if (!gameOver && !paused) {
